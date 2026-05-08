@@ -1,62 +1,38 @@
 import asyncio
 import logging
+import sys
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart
 from aiogram.types import Message
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN
-import database as db
-from locales import t
-import scheduler as sched
 
-from handlers import study, quiz_visual, quiz_written, weekly_test, settings
-
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
 
 async def main():
-    db.init_db()
-
+    print(f"BOT_TOKEN length={len(BOT_TOKEN)} starts={BOT_TOKEN[:12]}", flush=True)
     bot = Bot(
         token=BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher(storage=MemoryStorage())
 
-    # /start — register BEFORE routers
-    @dp.message(CommandStart())
-    async def cmd_start(message: Message):
-        user_id = message.from_user.id
-        db.create_user(user_id)
-        user = db.get_user(user_id)
-        ui = user["lang"] if user["lang"] in ("ru", "tj") else "ru"
-        await message.answer(t(ui, "welcome"))
-
-    # Routers
-    dp.include_router(settings.router)
-    dp.include_router(study.router)
-    dp.include_router(quiz_visual.router)
-    dp.include_router(quiz_written.router)
-    dp.include_router(weekly_test.router)
-
-    # Weekly written answers — LAST, only for weekly_written phase
     @dp.message()
-    async def global_text_handler(message: Message):
-        if not message.text or message.text.startswith("/"):
-            return
-        user_id = message.from_user.id
-        user = db.get_user(user_id)
-        if not user:
-            return
-        session = db.get_session(user_id)
-        if session and session["phase"] == "weekly_written":
-            await weekly_test.handle_weekly_written_answer(message, user_id)
+    async def echo_all(message: Message):
+        print(f"GOT: {message.text!r} from {message.from_user.id}", flush=True)
+        await message.answer(f"ECHO: {message.text}")
 
-    sched.setup(bot)
+    me = await bot.get_me()
+    print(f"BOT IS: @{me.username} id={me.id}", flush=True)
+
+    # Удаляет webhook и все ожидающие апдейты — чистый старт
+    await bot.delete_webhook(drop_pending_updates=True)
+    print("Webhook deleted, pending dropped. Starting polling...", flush=True)
+
     await dp.start_polling(bot)
 
 

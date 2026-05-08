@@ -1,6 +1,6 @@
 import os
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_TOKEN_HERE")
+BOT_TOKEN = os.getenv("8071015987:AAHwZYe9z1j_Wf9h9NT74UAE0CZjgpN18Pg")
 DB_PATH = "arabic_bot.db"
 WORDS_PATH = "data/words.json"
 WORDS_PER_LESSON = 10

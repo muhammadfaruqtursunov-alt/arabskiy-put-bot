@@ -2,6 +2,8 @@ import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
 from aiogram.types import Message
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -19,7 +21,11 @@ logging.basicConfig(level=logging.INFO)
 async def main():
     db.init_db()
 
-    bot = Bot(token=BOT_TOKEN)
+    # Default parse_mode = HTML for ALL messages — fixes "can't parse entities" errors
+    bot = Bot(
+        token=BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
     dp = Dispatcher(storage=MemoryStorage())
 
     # Register routers
@@ -36,7 +42,7 @@ async def main():
         db.create_user(user_id)
         user = db.get_user(user_id)
         ui = user["lang"] if user["lang"] in ("ru", "tj") else "ru"
-        await message.answer(t(ui, "welcome"), parse_mode="HTML")
+        await message.answer(t(ui, "welcome"))
 
     # Route weekly written answers
     @dp.message()

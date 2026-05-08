@@ -92,5 +92,4 @@ async def cmd_progress(message: Message):
           vol=user["current_volume"],
           lesson=user["current_lesson"],
           learned=learned),
-        parse_mode="Markdown"
     )

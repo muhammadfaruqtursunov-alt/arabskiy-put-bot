@@ -52,8 +52,10 @@ async def cmd_start_lesson(message: Message):
         lines.append(word_text(w, user["lang"], "word_line_both", "word_line_ru", "word_line_tj"))
 
     text = header + "\n".join(lines)
-    await message.answer(f"TEST: {len(text)} chars. vol={volume} lesson={lesson}")
-
+   from aiogram import Bot
+from config import BOT_TOKEN
+bot = Bot(token=BOT_TOKEN)
+await bot.send_message(user_id, f"TEST: {len(text)} chars. vol={volume} lesson={lesson}")
 
 @router.callback_query(F.data == "lesson_repeat")
 async def cb_repeat(callback: CallbackQuery):

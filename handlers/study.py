@@ -1,6 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
+import sys
 
 import database as db
 from words import get_lesson_words, get_lesson_meta
@@ -23,44 +24,52 @@ def get_ui_lang(user) -> str:
     return getattr(user, "ui_lang", "ru") if hasattr(user, "ui_lang") else "ru"
 
 
-@router.message(Command("start_lesson", "lesson", "go"))
+@router.message(Command("start_lesson"))
 async def cmd_start_lesson(message: Message):
-    import sys
-    print(f"DEBUG start_lesson text={message.text!r} user={message.from_user.id}", file=sys.stderr, flush=True)
+    print(f"[study] START_LESSON user={message.from_user.id}", file=sys.stderr, flush=True)
     user_id = message.from_user.id
-    user = db.get_user(user_id)
-    if not user:
-        db.create_user(user_id)
+    try:
         user = db.get_user(user_id)
+        print(f"[study] got user={user}", file=sys.stderr, flush=True)
+        if not user:
+            db.create_user(user_id)
+            user = db.get_user(user_id)
 
-    ui = user["lang"] if user["lang"] in ("ru", "tj") else "ru"
-    volume = user["current_volume"]
-    lesson = user["current_lesson"]
+        ui = user["lang"] if user["lang"] in ("ru", "tj") else "ru"
+        volume = user["current_volume"]
+        lesson = user["current_lesson"]
+        print(f"[study] vol={volume} lesson={lesson}", file=sys.stderr, flush=True)
 
-    words = get_lesson_words(volume, lesson)
-    if not words:
-        await message.answer("⚠️ Слова не найдены.")
-        return
+        words = get_lesson_words(volume, lesson)
+        print(f"[study] words count={len(words) if words else 0}", file=sys.stderr, flush=True)
+        if not words:
+            await message.answer("⚠️ Слова не найдены.")
+            return
 
-    meta = get_lesson_meta(volume, lesson)
-    theme = meta.get("theme_tj" if ui == "tj" else "theme_ru", "")
+        meta = get_lesson_meta(volume, lesson)
+        theme = meta.get("theme_tj" if ui == "tj" else "theme_ru", "")
 
-    # Init session
-    db.set_session(user_id, lesson=lesson, word_index=0, failures=0, phase="study")
-    db.update_user(user_id, state="study")
+        db.set_session(user_id, lesson=lesson, word_index=0, failures=0, phase="study")
+        db.update_user(user_id, state="study")
 
-    header = t(ui, "lesson_header", lesson=lesson, theme=theme)
-    lines = []
-    for w in words:
-        lines.append(word_text(w, user["lang"], "word_line_both", "word_line_ru", "word_line_tj"))
+        header = t(ui, "lesson_header", lesson=lesson, theme=theme)
+        lines = []
+        for w in words:
+            lines.append(word_text(w, user["lang"], "word_line_both", "word_line_ru", "word_line_tj"))
 
-    text = header + "\n".join(lines)
+        text = header + "\n".join(lines)
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text=t(ui, "btn_learned"), callback_data="lesson_learned"),
-        InlineKeyboardButton(text=t(ui, "btn_repeat"),  callback_data="lesson_repeat"),
-    ]])
-    await message.answer(text, reply_markup=kb)
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text=t(ui, "btn_learned"), callback_data="lesson_learned"),
+            InlineKeyboardButton(text=t(ui, "btn_repeat"),  callback_data="lesson_repeat"),
+        ]])
+        print(f"[study] sending message...", file=sys.stderr, flush=True)
+        await message.answer(text, reply_markup=kb)
+        print(f"[study] message sent!", file=sys.stderr, flush=True)
+    except Exception as e:
+        print(f"[study] ERROR: {e}", file=sys.stderr, flush=True)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
 
 
 @router.callback_query(F.data == "lesson_repeat")

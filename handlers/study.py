@@ -1,10 +1,10 @@
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
-
 import database as db
 from words import get_lesson_words, get_lesson_meta
 from locales import t
+from config import BOT_TOKEN
 
 router = Router()
 
@@ -52,10 +52,9 @@ async def cmd_start_lesson(message: Message):
         lines.append(word_text(w, user["lang"], "word_line_both", "word_line_ru", "word_line_tj"))
 
     text = header + "\n".join(lines)
-   from aiogram import Bot
-from config import BOT_TOKEN
-bot = Bot(token=BOT_TOKEN)
-await bot.send_message(user_id, f"TEST: {len(text)} chars. vol={volume} lesson={lesson}")
+    bot = Bot(token=BOT_TOKEN)
+    await bot.send_message(user_id, f"TEST: {len(text)} chars. vol={volume} lesson={lesson}")
+
 
 @router.callback_query(F.data == "lesson_repeat")
 async def cb_repeat(callback: CallbackQuery):

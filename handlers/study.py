@@ -52,12 +52,7 @@ async def cmd_start_lesson(message: Message):
         lines.append(word_text(w, user["lang"], "word_line_both", "word_line_ru", "word_line_tj"))
 
     text = header + "\n".join(lines)
-
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text=t(ui, "btn_learned"), callback_data="lesson_learned"),
-        InlineKeyboardButton(text=t(ui, "btn_repeat"),  callback_data="lesson_repeat"),
-    ]])
-    await message.answer(text, reply_markup=kb)
+    await message.answer(f"TEST: {len(text)} chars. vol={volume} lesson={lesson}")
 
 
 @router.callback_query(F.data == "lesson_repeat")

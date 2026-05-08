@@ -36,7 +36,7 @@ async def main():
         db.create_user(user_id)
         user = db.get_user(user_id)
         ui = user["lang"] if user["lang"] in ("ru", "tj") else "ru"
-        await message.answer(t(ui, "welcome"), parse_mode="Markdown")
+        await message.answer(t(ui, "welcome"), parse_mode="HTML")
 
     # Route weekly written answers
     @dp.message()

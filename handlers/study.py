@@ -20,7 +20,6 @@ def word_text(word: dict, lang: str, loc_key_both: str, loc_key_ru: str, loc_key
 
 def get_ui_lang(user) -> str:
     """Interface language for t() calls."""
-    # Store ui_lang separately; default ru
     return getattr(user, "ui_lang", "ru") if hasattr(user, "ui_lang") else "ru"
 
 
@@ -59,7 +58,7 @@ async def cmd_start_lesson(message: Message):
         InlineKeyboardButton(text=t(ui, "btn_learned"), callback_data="lesson_learned"),
         InlineKeyboardButton(text=t(ui, "btn_repeat"),  callback_data="lesson_repeat"),
     ]])
-    await message.answer(text, reply_markup=kb, parse_mode="Markdown")
+    await message.answer(text, reply_markup=kb)
 
 
 @router.callback_query(F.data == "lesson_repeat")
@@ -75,12 +74,10 @@ async def cb_learned(callback: CallbackQuery):
     user = db.get_user(user_id)
     ui = user["lang"] if user["lang"] in ("ru", "tj") else "ru"
 
-    # Mark all words as learned tentatively, start visual quiz
     db.set_session(user_id, phase="visual", word_index=0, failures=0)
     db.update_user(user_id, state="quiz_visual")
 
-    await callback.message.answer(t(ui, "start_visual"), parse_mode="Markdown")
+    await callback.message.answer(t(ui, "start_visual"))
 
-    # Trigger first visual question
     from handlers.quiz_visual import send_visual_question
     await send_visual_question(callback.message, user_id)

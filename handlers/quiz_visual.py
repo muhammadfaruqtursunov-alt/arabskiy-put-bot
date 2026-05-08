@@ -21,7 +21,7 @@ async def send_visual_question(message: Message, user_id: int):
         # Visual quiz passed — go to written
         db.set_session(user_id, phase="written", word_index=0, failures=0)
         db.update_user(user_id, state="quiz_written")
-        await message.answer(t(ui, "start_written"), parse_mode="Markdown")
+        await message.answer(t(ui, "start_written"))
         from handlers.quiz_written import send_written_question
         await send_written_question(message, user_id)
         return
@@ -36,7 +36,6 @@ async def send_visual_question(message: Message, user_id: int):
     await message.answer(
         t(ui, "visual_question", ar=word["ar"]),
         reply_markup=kb,
-        parse_mode="Markdown"
     )
 
 
@@ -53,7 +52,6 @@ async def cb_visual_answer(callback: CallbackQuery):
     correct_label = parts[2]
     word_id = int(parts[3])
 
-    # Rebuild choices to find chosen label
     words = get_lesson_words(user["current_volume"], session["lesson"])
     word = next((w for w in words if w["id"] == word_id), None)
     if not word:
@@ -63,7 +61,7 @@ async def cb_visual_answer(callback: CallbackQuery):
     chosen_label = choices[chosen_idx] if chosen_idx < len(choices) else ""
 
     if chosen_label == correct_label:
-        await callback.message.answer(t(ui, "visual_correct"), parse_mode="Markdown")
+        await callback.message.answer(t(ui, "visual_correct"))
         db.set_session(user_id, word_index=session["word_index"] + 1)
         await send_visual_question(callback.message, user_id)
     else:
@@ -72,15 +70,13 @@ async def cb_visual_answer(callback: CallbackQuery):
 
         await callback.message.answer(
             t(ui, "visual_wrong", correct=correct_label),
-            parse_mode="Markdown"
         )
 
         if failures >= MAX_FAILURES:
-            # Fail — back to study
             fail_idx = session.get("fail_texts_index", 0)
-            await callback.message.answer(get_fail_text(ui, fail_idx), parse_mode="Markdown")
+            await callback.message.answer(get_fail_text(ui, fail_idx))
             db.set_session(user_id, fail_texts_index=fail_idx + 1)
-            await callback.message.answer(t(ui, "failures_visual"), parse_mode="Markdown")
+            await callback.message.answer(t(ui, "failures_visual"))
 
             db.set_session(user_id, phase="study", word_index=0, failures=0)
             db.update_user(user_id, state="study")
@@ -88,5 +84,4 @@ async def cb_visual_answer(callback: CallbackQuery):
             from handlers.study import cmd_start_lesson
             await cmd_start_lesson(callback.message)
         else:
-            # Continue same word
             await send_visual_question(callback.message, user_id)

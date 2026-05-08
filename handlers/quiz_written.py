@@ -19,12 +19,11 @@ async def send_written_question(message: Message, user_id: int):
     idx = session["word_index"]
 
     if idx >= len(words):
-        # Written quiz passed — lesson complete!
         await finish_lesson(message, user_id, user, session)
         return
 
     word = words[idx]
-    await message.answer(t(ui, "written_question", ar=word["ar"]), parse_mode="Markdown")
+    await message.answer(t(ui, "written_question", ar=word["ar"]))
 
 
 async def finish_lesson(message: Message, user_id: int, user, session):
@@ -32,7 +31,6 @@ async def finish_lesson(message: Message, user_id: int, user, session):
     lesson = session["lesson"]
     volume = user["current_volume"]
 
-    # Mark all words as learned
     words = get_lesson_words(volume, lesson)
     week = _current_week(user_id)
     for w in words:
@@ -40,14 +38,12 @@ async def finish_lesson(message: Message, user_id: int, user, session):
 
     learned = len(db.get_learned_words(user_id, week))
 
-    await message.answer(t(ui, "lesson_passed", lesson=lesson), parse_mode="Markdown")
+    await message.answer(t(ui, "lesson_passed", lesson=lesson))
 
-    # Check if week complete (7 lessons = 70 words)
     if learned >= 70:
         from handlers.weekly_test import start_weekly_test
         await start_weekly_test(message, user_id)
     else:
-        # Advance lesson
         db.update_user(user_id, current_lesson=lesson + 1, state="idle")
         db.clear_session(user_id)
 
@@ -79,13 +75,12 @@ async def handle_written_answer(message: Message):
     word = words[idx]
     answer = normalize(message.text)
 
-    # Accept both tj and ru answers
     correct_ru = normalize(word["ru"])
     correct_tj = normalize(word["tj"])
     is_correct = answer in (correct_ru, correct_tj)
 
     if is_correct:
-        await message.answer(t(ui, "written_correct"), parse_mode="Markdown")
+        await message.answer(t(ui, "written_correct"))
         db.set_session(user_id, word_index=idx + 1, failures=0)
         await send_written_question(message, user_id)
     else:
@@ -95,15 +90,14 @@ async def handle_written_answer(message: Message):
         correct_display = f"{word['tj']} / {word['ru']}" if user["lang"] == "both" else (
             word["ru"] if user["lang"] == "ru" else word["tj"]
         )
-        await message.answer(t(ui, "written_wrong", correct=correct_display), parse_mode="Markdown")
+        await message.answer(t(ui, "written_wrong", correct=correct_display))
 
         if failures >= MAX_FAILURES:
             fail_idx = session.get("fail_texts_index", 0)
-            await message.answer(get_fail_text(ui, fail_idx), parse_mode="Markdown")
+            await message.answer(get_fail_text(ui, fail_idx))
             db.set_session(user_id, fail_texts_index=fail_idx + 1)
-            await message.answer(t(ui, "failures_written"), parse_mode="Markdown")
+            await message.answer(t(ui, "failures_written"))
 
-            # Back to visual
             db.set_session(user_id, phase="visual", word_index=0, failures=0)
             db.update_user(user_id, state="quiz_visual")
             from handlers.quiz_visual import send_visual_question

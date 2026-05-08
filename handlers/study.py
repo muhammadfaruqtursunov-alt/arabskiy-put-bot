@@ -25,7 +25,8 @@ def get_ui_lang(user) -> str:
 
 @router.message(Command("start_lesson", "lesson", "go"))
 async def cmd_start_lesson(message: Message):
-    print(f"DEBUG start_lesson user={message.from_user.id}", flush=True)
+    import sys
+    print(f"DEBUG start_lesson text={message.text!r} user={message.from_user.id}", file=sys.stderr, flush=True)
     user_id = message.from_user.id
     user = db.get_user(user_id)
     if not user:

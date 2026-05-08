@@ -53,7 +53,7 @@ def _current_week(user_id: int) -> int:
     return user["current_volume"] * 100 + user["current_lesson"] // 7
 
 
-@router.message(F.text & ~F.text.startswith("/"))
+@router.message(F.text & ~F.text.startswith("/") & F.func(lambda m: True))
 async def handle_written_answer(message: Message):
     user_id = message.from_user.id
     user = db.get_user(user_id)

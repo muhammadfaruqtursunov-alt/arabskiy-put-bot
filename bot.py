@@ -21,21 +21,13 @@ logging.basicConfig(level=logging.INFO)
 async def main():
     db.init_db()
 
-    # Default parse_mode = HTML for ALL messages — fixes "can't parse entities" errors
     bot = Bot(
         token=BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher(storage=MemoryStorage())
 
-    # Register routers
-    dp.include_router(settings.router)
-    dp.include_router(study.router)
-    dp.include_router(quiz_visual.router)
-    dp.include_router(quiz_written.router)
-    dp.include_router(weekly_test.router)
-
-    # /start
+    # /start — register BEFORE routers
     @dp.message(CommandStart())
     async def cmd_start(message: Message):
         user_id = message.from_user.id
@@ -44,7 +36,14 @@ async def main():
         ui = user["lang"] if user["lang"] in ("ru", "tj") else "ru"
         await message.answer(t(ui, "welcome"))
 
-    # Route weekly written answers
+    # Routers
+    dp.include_router(settings.router)
+    dp.include_router(study.router)
+    dp.include_router(quiz_visual.router)
+    dp.include_router(quiz_written.router)
+    dp.include_router(weekly_test.router)
+
+    # Weekly written answers — LAST, only for weekly_written phase
     @dp.message()
     async def global_text_handler(message: Message):
         if not message.text or message.text.startswith("/"):

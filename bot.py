@@ -106,4 +106,4 @@ async def main():
         if not session:
             await message.answer("debug: session None")
             return
-        print(f"TEXT:
+       print(f"TEXT: state={user['state']} phase={session['phase']}", flush=True)

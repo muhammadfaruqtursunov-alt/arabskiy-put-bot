@@ -23,7 +23,7 @@ def get_ui_lang(user) -> str:
     return getattr(user, "ui_lang", "ru") if hasattr(user, "ui_lang") else "ru"
 
 
-@router.message(Command("start_lesson"))
+@router.message(Command("start_lesson", ignore_mention=True))
 async def cmd_start_lesson(message: Message):
     user_id = message.from_user.id
     user = db.get_user(user_id)

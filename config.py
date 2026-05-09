@@ -1,5 +1,7 @@
 import os
-BOT_TOKEN = os.environ.get("BOT_TOKEN") or "8071015987:AAHhirxhqIvdNZglz0GvUErw5NJiVwqv-QI"
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN not set!")
 DB_PATH = "arabic_bot.db"
 WORDS_PATH = "data/words.json"
 WORDS_PER_LESSON = 10

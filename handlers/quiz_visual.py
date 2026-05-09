@@ -2,7 +2,7 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 import database as db
-from words import get_lesson_words, get_lesson_meta, make_visual_choices
+from words import get_lesson_words, make_visual_choices
 from locales import t, get_fail_text
 
 router = Router()
@@ -18,7 +18,6 @@ async def send_visual_question(message: Message, user_id: int):
     idx = session["word_index"]
 
     if idx >= len(words):
-        # Visual quiz passed — go to written
         db.set_session(user_id, phase="written", word_index=0, failures=0)
         db.update_user(user_id, state="quiz_written")
         await message.answer(t(ui, "start_written"))
@@ -29,9 +28,25 @@ async def send_visual_question(message: Message, user_id: int):
     word = words[idx]
     choices, correct_label = make_visual_choices(word, words, user["lang"])
 
+    # Храним word_id правильного и word_id выбранного — без текста в callback
+    # choices — список слов в том же порядке что и кнопки
+    # Получаем id каждого слова из choices через обратный поиск
+    def get_word_id_by_label(label, all_words, lang):
+        for w in all_words:
+            if lang == "ru" and w["ru"] == label:
+                return w["id"]
+            elif lang == "tj" and w["tj"] == label:
+                return w["id"]
+            elif lang not in ("ru", "tj") and f"{w['tj']} / {w['ru']}" == label:
+                return w["id"]
+        return 0
+
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=c, callback_data=f"vis_{i}_{correct_label}_{word['id']}")]
-        for i, c in enumerate(choices)
+        [InlineKeyboardButton(
+            text=c,
+            callback_data=f"vis_{word['id']}_{get_word_id_by_label(c, words, user['lang'])}"
+        )]
+        for c in choices
     ])
     await message.answer(
         t(ui, "visual_question", ar=word["ar"]),
@@ -47,40 +62,39 @@ async def cb_visual_answer(callback: CallbackQuery):
     session = db.get_session(user_id)
     ui = user["lang"] if user["lang"] in ("ru", "tj") else "ru"
 
-    parts = callback.data.split("_", 3)
-    chosen_idx = int(parts[1])
-    correct_label = parts[2]
-    word_id = int(parts[3])
+    parts = callback.data.split("_")
+    correct_word_id = int(parts[1])
+    chosen_word_id = int(parts[2])
 
     words = get_lesson_words(user["current_volume"], session["lesson"])
-    word = next((w for w in words if w["id"] == word_id), None)
-    if not word:
+    correct_word = next((w for w in words if w["id"] == correct_word_id), None)
+    if not correct_word:
         return
 
-    choices, _ = make_visual_choices(word, words, user["lang"])
-    chosen_label = choices[chosen_idx] if chosen_idx < len(choices) else ""
+    def label(w):
+        if user["lang"] == "ru":
+            return w["ru"]
+        elif user["lang"] == "tj":
+            return w["tj"]
+        else:
+            return f"{w['tj']} / {w['ru']}"
 
-    if chosen_label == correct_label:
+    if chosen_word_id == correct_word_id:
         await callback.message.answer(t(ui, "visual_correct"))
-        db.set_session(user_id, word_index=session["word_index"] + 1)
+        db.set_session(user_id, word_index=session["word_index"] + 1, failures=0)
         await send_visual_question(callback.message, user_id)
     else:
         failures = session["failures"] + 1
         db.set_session(user_id, failures=failures)
-
-        await callback.message.answer(
-            t(ui, "visual_wrong", correct=correct_label),
-        )
+        await callback.message.answer(t(ui, "visual_wrong", correct=label(correct_word)))
 
         if failures >= MAX_FAILURES:
             fail_idx = session.get("fail_texts_index", 0)
             await callback.message.answer(get_fail_text(ui, fail_idx))
             db.set_session(user_id, fail_texts_index=fail_idx + 1)
             await callback.message.answer(t(ui, "failures_visual"))
-
             db.set_session(user_id, phase="study", word_index=0, failures=0)
             db.update_user(user_id, state="study")
-
             from handlers.study import cmd_start_lesson
             await cmd_start_lesson(callback.message)
         else:

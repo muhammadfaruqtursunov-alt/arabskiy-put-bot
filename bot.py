@@ -10,7 +10,7 @@ print("asyncio ok", flush=True)
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.types import Message
 from aiogram.fsm.storage.memory import MemoryStorage
 
@@ -47,6 +47,11 @@ async def main():
         user = db.get_user(user_id)
         ui = user["lang"] if user["lang"] in ("ru", "tj") else "ru"
         await message.answer(t(ui, "welcome"))
+
+    @dp.message(Command("start_lesson"))
+    async def cmd_start_lesson_direct(message: Message):
+        print(f"DIRECT HIT start_lesson user={message.from_user.id}", flush=True)
+        await message.answer("DIRECT HIT: start_lesson работает!")
 
     dp.include_router(settings.router)
     dp.include_router(study.router)

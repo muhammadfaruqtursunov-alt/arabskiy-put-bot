@@ -50,44 +50,18 @@ def check_answer(answer: str, word: dict) -> bool:
     return answer in ru_variants or answer in tj_variants
 
 
+def correct_display(word: dict, lang: str) -> str:
+    if lang == "both":
+        return f"{word['tj']} / {word['ru']}"
+    elif lang == "ru":
+        return word["ru"]
+    else:
+        return word["tj"]
+
+
 async def handle_written_answer(message: Message):
     user_id = message.from_user.id
     user = db.get_user(user_id)
     if not user or user["state"] not in ("quiz_written", "weekly"):
         return
-    session = db.get_session(user_id)
-    if not session or session["phase"] not in ("written",):
-        return
-    ui = user["lang"] if user["lang"] in ("ru", "tj") else "ru"
-    words = get_lesson_words(user["current_volume"], session["lesson"])
-    idx = session["word_index"]
-    if idx >= len(words):
-        return
-    word = words[idx]
-    answer = normalize(message.text)
-    is_correct = check_answer(answer, word)
-    if is_correct:
-        await message.answer(t(ui, "written_correct"))
-        db.set_session(user_id, word_index=idx + 1, failures=0)
-        await send_written_question(message, user_id)
-    else:
-        failures = session["failures"] + 1
-        db.set_session(user_id, failures=failures)
-       if user["lang"] == "both":
-            correct_display = f"{word['tj']} / {word['ru']}"
-        elif user["lang"] == "ru":
-            correct_display = word["ru"]
-        else:
-            correct_display = word["tj"])
-        await message.answer(t(ui, "written_wrong", correct=correct_display))
-        if failures >= MAX_FAILURES:
-            fail_idx = session.get("fail_texts_index", 0)
-            await message.answer(get_fail_text(ui, fail_idx))
-            db.set_session(user_id, fail_texts_index=fail_idx + 1)
-            await message.answer(t(ui, "failures_written"))
-            db.set_session(user_id, phase="visual", word_index=0, failures=0)
-            db.update_user(user_id, state="quiz_visual")
-            from handlers.quiz_visual import send_visual_question
-            await send_visual_question(message, user_id)
-        else:
-            await send_written_question(message, user_id)
+    session = db.get_s

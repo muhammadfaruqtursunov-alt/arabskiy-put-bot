@@ -73,4 +73,21 @@ async def handle_written_answer(message: Message):
     else:
         failures = session["failures"] + 1
         db.set_session(user_id, failures=failures)
-        correct_display = f"{word['tj']} / {word['ru']}" if user["lang"] ==
+       if user["lang"] == "both":
+            correct_display = f"{word['tj']} / {word['ru']}"
+        elif user["lang"] == "ru":
+            correct_display = word["ru"]
+        else:
+            correct_display = word["tj"])
+        await message.answer(t(ui, "written_wrong", correct=correct_display))
+        if failures >= MAX_FAILURES:
+            fail_idx = session.get("fail_texts_index", 0)
+            await message.answer(get_fail_text(ui, fail_idx))
+            db.set_session(user_id, fail_texts_index=fail_idx + 1)
+            await message.answer(t(ui, "failures_written"))
+            db.set_session(user_id, phase="visual", word_index=0, failures=0)
+            db.update_user(user_id, state="quiz_visual")
+            from handlers.quiz_visual import send_visual_question
+            await send_visual_question(message, user_id)
+        else:
+            await send_written_question(message, user_id)

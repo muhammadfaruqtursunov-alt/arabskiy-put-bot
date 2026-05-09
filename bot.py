@@ -105,7 +105,7 @@ async def main():
         session = db.get_session(user_id)
         if not session:
             return
-        print(f"TEXT: state={user['state']} phase={session.get('phase')} text={message.text!r}", flush=True)
+        print(f"TEXT: state={user['state']} phase={session['phase']} text={message.text!r}", flush=True)
         if user["state"] == "quiz_written" and session["phase"] == "written":
             await quiz_written.handle_written_answer(message)
             return

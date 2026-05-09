@@ -1,129 +1,99 @@
-import asyncio
-import logging
+from aiogram import Router, F
+from aiogram.types import Message
 
-from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart, Command
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.fsm.storage.memory import MemoryStorage
-
-from config import BOT_TOKEN
 import database as db
-from locales import t
-from words import get_lesson_words, get_lesson_meta, normalize
-import scheduler as sched
+from words import get_lesson_words, normalize
+from locales import t, get_fail_text
 
-from handlers import quiz_visual, quiz_written, weekly_test, settings
-
-logging.basicConfig(level=logging.INFO)
+router = Router()
+MAX_FAILURES = 3
 
 
-def word_text(word, lang):
-    if lang == "ru":
-        return t("ru", "word_line_ru", ar=word["ar"], ru=word["ru"])
-    elif lang == "tj":
-        return t("tj", "word_line_tj", ar=word["ar"], tj=word["tj"])
+async def send_written_question(message: Message, user_id: int):
+    user = db.get_user(user_id)
+    session = db.get_session(user_id)
+    ui = user["lang"] if user["lang"] in ("ru", "tj") else "ru"
+
+    words = get_lesson_words(user["current_volume"], session["lesson"])
+    idx = session["word_index"]
+
+    if idx >= len(words):
+        await finish_lesson(message, user_id, user, session)
+        return
+
+    word = words[idx]
+    await message.answer(t(ui, "written_question", ar=word["ar"]))
+
+
+async def finish_lesson(message: Message, user_id: int, user, session):
+    ui = user["lang"] if user["lang"] in ("ru", "tj") else "ru"
+    lesson = session["lesson"]
+    volume = user["current_volume"]
+
+    words = get_lesson_words(volume, lesson)
+    week = _current_week(user_id)
+    for w in words:
+        db.mark_word(user_id, w["id"], "learned", week)
+
+    learned = len(db.get_learned_words(user_id, week))
+    await message.answer(t(ui, "lesson_passed", lesson=lesson))
+
+    if learned >= 70:
+        from handlers.weekly_test import start_weekly_test
+        await start_weekly_test(message, user_id)
     else:
-        return t("ru", "word_line_both", ar=word["ar"], tj=word["tj"], ru=word["ru"])
+        db.update_user(user_id, current_lesson=lesson + 1, state="idle")
+        db.clear_session(user_id)
 
 
-async def main():
-    db.init_db()
-
-    bot = Bot(
-        token=BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
-    dp = Dispatcher(storage=MemoryStorage())
-
-    @dp.message(CommandStart())
-    async def cmd_start(message: Message):
-        user_id = message.from_user.id
-        db.create_user(user_id)
-        user = db.get_user(user_id)
-        ui = user["lang"] if user["lang"] in ("ru", "tj") else "ru"
-        await message.answer(t(ui, "welcome"))
-
-    @dp.message(Command("start_lesson"))
-    async def cmd_start_lesson(message: Message):
-        user_id = message.from_user.id
-        user = db.get_user(user_id)
-        if not user:
-            db.create_user(user_id)
-            user = db.get_user(user_id)
-
-        ui = user["lang"] if user["lang"] in ("ru", "tj") else "ru"
-        volume = user["current_volume"]
-        lesson = user["current_lesson"]
-
-        words = get_lesson_words(volume, lesson)
-        if not words:
-            await message.answer(f"⚠️ Слова не найдены. vol={volume} lesson={lesson}")
-            return
-
-        meta = get_lesson_meta(volume, lesson)
-        theme = meta.get("theme_tj" if ui == "tj" else "theme_ru", "")
-
-        db.set_session(user_id, lesson=lesson, word_index=0, failures=0, phase="study")
-        db.update_user(user_id, state="study")
-
-        header = t(ui, "lesson_header", lesson=lesson, theme=theme)
-        lines = [word_text(w, user["lang"]) for w in words]
-        text = header + "\n".join(lines)
-
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text=t(ui, "btn_learned"), callback_data="lesson_learned"),
-            InlineKeyboardButton(text=t(ui, "btn_repeat"), callback_data="lesson_repeat"),
-        ]])
-        await message.answer(text, reply_markup=kb)
-
-    @dp.callback_query(lambda c: c.data == "lesson_repeat")
-    async def cb_repeat(callback: CallbackQuery):
-        await callback.answer()
-        await cmd_start_lesson(callback.message)
-
-    @dp.callback_query(lambda c: c.data == "lesson_learned")
-    async def cb_learned(callback: CallbackQuery):
-        await callback.answer()
-        user_id = callback.from_user.id
-        user = db.get_user(user_id)
-        ui = user["lang"] if user["lang"] in ("ru", "tj") else "ru"
-        db.set_session(user_id, phase="visual", word_index=0, failures=0)
-        db.update_user(user_id, state="quiz_visual")
-        await callback.message.answer(t(ui, "start_visual"))
-        from handlers.quiz_visual import send_visual_question
-        await send_visual_question(callback.message, user_id)
-
-    dp.include_router(settings.router)
-    dp.include_router(quiz_visual.router)
-    dp.include_router(quiz_written.router)
-    dp.include_router(weekly_test.router)
-
-    @dp.message()
-    async def global_text_handler(message: Message):
-        if not message.text or message.text.startswith("/"):
-            return
-        user_id = message.from_user.id
-        user = db.get_user(user_id)
-        if not user:
-            return
-        session = db.get_session(user_id)
-        if not session:
-            return
-
-        # Письменный тест
-        if user["state"] == "quiz_written" and session["phase"] == "written":
-            await quiz_written.handle_written_answer(message)
-            return
-
-        # Еженедельный письменный тест
-        if session["phase"] == "weekly_written":
-            await weekly_test.handle_weekly_written_answer(message, user_id)
-
-    await bot.delete_webhook(drop_pending_updates=True)
-    sched.setup(bot)
-    await dp.start_polling(bot)
+def _current_week(user_id: int) -> int:
+    user = db.get_user(user_id)
+    return user["current_volume"] * 100 + user["current_lesson"] // 7
 
 
-asyncio.run(main())
+async def handle_written_answer(message: Message):
+    user_id = message.from_user.id
+    user = db.get_user(user_id)
+    if not user or user["state"] not in ("quiz_written", "weekly"):
+        return
+
+    session = db.get_session(user_id)
+    if not session or session["phase"] not in ("written",):
+        return
+
+    ui = user["lang"] if user["lang"] in ("ru", "tj") else "ru"
+    words = get_lesson_words(user["current_volume"], session["lesson"])
+    idx = session["word_index"]
+
+    if idx >= len(words):
+        return
+
+    word = words[idx]
+    answer = normalize(message.text)
+    correct_ru = normalize(word["ru"])
+    correct_tj = normalize(word["tj"])
+    is_correct = answer in (correct_ru, correct_tj)
+
+    if is_correct:
+        await message.answer(t(ui, "written_correct"))
+        db.set_session(user_id, word_index=idx + 1, failures=0)
+        await send_written_question(message, user_id)
+    else:
+        failures = session["failures"] + 1
+        db.set_session(user_id, failures=failures)
+        correct_display = f"{word['tj']} / {word['ru']}" if user["lang"] == "both" else (
+            word["ru"] if user["lang"] == "ru" else word["tj"]
+        )
+        await message.answer(t(ui, "written_wrong", correct=correct_display))
+
+        if failures >= MAX_FAILURES:
+            fail_idx = session.get("fail_texts_index", 0)
+            await message.answer(get_fail_text(ui, fail_idx))
+            db.set_session(user_id, fail_texts_index=fail_idx + 1)
+            await message.answer(t(ui, "failures_written"))
+            db.set_session(user_id, phase="visual", word_index=0, failures=0)
+            db.update_user(user_id, state="quiz_visual")
+            from handlers.quiz_visual import send_visual_question
+            await send_visual_question(message, user_id)
+        else:
+            await send_written_question(message, user_id)

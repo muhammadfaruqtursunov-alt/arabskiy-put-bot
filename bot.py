@@ -103,19 +103,7 @@ async def main():
         if not user:
             return
         session = db.get_session(user_id)
-       if not session:
-    await message.answer("debug: session None")
-    return
-        print(f"TEXT: state={user['state']} phase={session['phase']} text={message.text!r}", flush=True)
-        if user["state"] == "quiz_written" and session["phase"] == "written":
-            await quiz_written.handle_written_answer(message)
+        if not session:
+            await message.answer("debug: session None")
             return
-        if session["phase"] == "weekly_written":
-            await weekly_test.handle_weekly_written_answer(message, user_id)
-
-    await bot.delete_webhook(drop_pending_updates=True)
-    sched.setup(bot)
-    await dp.start_polling(bot)
-
-
-asyncio.run(main())
+        print(f"TEXT:

@@ -1,81 +1,76 @@
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import Command
+import sys
+print(f"Python: {sys.version}", flush=True)
+print(f"Starting imports...", flush=True)
 
+import asyncio
+import logging
+
+print("asyncio ok", flush=True)
+
+from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
+from aiogram.filters import CommandStart
+from aiogram.types import Message
+from aiogram.fsm.storage.memory import MemoryStorage
+
+print("aiogram ok", flush=True)
+
+from config import BOT_TOKEN
 import database as db
-from words import get_lesson_words, get_lesson_meta
 from locales import t
+import scheduler as sched
 
-router = Router()
+print("local imports ok", flush=True)
 
+from handlers import study, quiz_visual, quiz_written, weekly_test, settings
 
-def word_text(word: dict, lang: str, loc_key_both: str, loc_key_ru: str, loc_key_tj: str) -> str:
-    if lang == "ru":
-        return t("ru", loc_key_ru, ar=word["ar"], ru=word["ru"])
-    elif lang == "tj":
-        return t("tj", loc_key_tj, ar=word["ar"], tj=word["tj"])
-    else:
-        return t("ru", loc_key_both, ar=word["ar"], tj=word["tj"], ru=word["ru"])
+print("handlers ok", flush=True)
+
+logging.basicConfig(level=logging.INFO)
 
 
-def get_ui_lang(user) -> str:
-    return getattr(user, "ui_lang", "ru") if hasattr(user, "ui_lang") else "ru"
+async def main():
+    print("main() started", flush=True)
+    db.init_db()
 
+    bot = Bot(
+        token=BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
+    dp = Dispatcher(storage=MemoryStorage())
 
-@router.message(Command("start_lesson"))
-async def cmd_start_lesson(message: Message):
-    user_id = message.from_user.id
-    user = db.get_user(user_id)
-    if not user:
+    @dp.message(CommandStart())
+    async def cmd_start(message: Message):
+        user_id = message.from_user.id
         db.create_user(user_id)
         user = db.get_user(user_id)
+        ui = user["lang"] if user["lang"] in ("ru", "tj") else "ru"
+        await message.answer(t(ui, "welcome"))
 
-    ui = user["lang"] if user["lang"] in ("ru", "tj") else "ru"
-    volume = user["current_volume"]
-    lesson = user["current_lesson"]
+    dp.include_router(settings.router)
+    dp.include_router(study.router)
+    dp.include_router(quiz_visual.router)
+    dp.include_router(quiz_written.router)
+    dp.include_router(weekly_test.router)
 
-    words = get_lesson_words(volume, lesson)
-    if not words:
-        await message.answer("⚠️ Слова не найдены.")
-        return
+    @dp.message()
+    async def global_text_handler(message: Message):
+        if not message.text or message.text.startswith("/"):
+            return
+        user_id = message.from_user.id
+        user = db.get_user(user_id)
+        if not user:
+            return
+        session = db.get_session(user_id)
+        if session and session["phase"] == "weekly_written":
+            await weekly_test.handle_weekly_written_answer(message, user_id)
 
-    meta = get_lesson_meta(volume, lesson)
-    theme = meta.get("theme_tj" if ui == "tj" else "theme_ru", "")
-
-    db.set_session(user_id, lesson=lesson, word_index=0, failures=0, phase="study")
-    db.update_user(user_id, state="study")
-
-    header = t(ui, "lesson_header", lesson=lesson, theme=theme)
-    lines = []
-    for w in words:
-        lines.append(word_text(w, user["lang"], "word_line_both", "word_line_ru", "word_line_tj"))
-
-    text = header + "\n".join(lines)
-
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text=t(ui, "btn_learned"), callback_data="lesson_learned"),
-        InlineKeyboardButton(text=t(ui, "btn_repeat"),  callback_data="lesson_repeat"),
-    ]])
-    await message.answer(text, reply_markup=kb)
+    await bot.delete_webhook(drop_pending_updates=True)
+    sched.setup(bot)
+    print("Starting polling...", flush=True)
+    await dp.start_polling(bot)
 
 
-@router.callback_query(F.data == "lesson_repeat")
-async def cb_repeat(callback: CallbackQuery):
-    await callback.answer()
-    await cmd_start_lesson(callback.message)
-
-
-@router.callback_query(F.data == "lesson_learned")
-async def cb_learned(callback: CallbackQuery):
-    await callback.answer()
-    user_id = callback.from_user.id
-    user = db.get_user(user_id)
-    ui = user["lang"] if user["lang"] in ("ru", "tj") else "ru"
-
-    db.set_session(user_id, phase="visual", word_index=0, failures=0)
-    db.update_user(user_id, state="quiz_visual")
-
-    await callback.message.answer(t(ui, "start_visual"))
-
-    from handlers.quiz_visual import send_visual_question
-    await send_visual_question(callback.message, user_id)
+print("Calling asyncio.run...", flush=True)
+asyncio.run(main())
